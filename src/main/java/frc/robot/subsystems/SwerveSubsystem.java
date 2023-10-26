@@ -4,53 +4,130 @@
 
 package frc.robot.subsystems;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-
 import com.pathplanner.lib.PathConstraints;
 import com.pathplanner.lib.PathPlanner;
 import com.pathplanner.lib.PathPlannerTrajectory;
 import com.pathplanner.lib.auto.PIDConstants;
 import com.pathplanner.lib.auto.SwerveAutoBuilder;
-
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.kinematics.SwerveDriveKinematics;
 import edu.wpi.first.math.trajectory.Trajectory;
-import edu.wpi.first.wpilibj.Filesystem;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
+import java.io.File;
+import java.util.List;
+import java.util.Map;
 import swervelib.SwerveController;
 import swervelib.SwerveDrive;
+import swervelib.parser.SwerveControllerConfiguration;
 import swervelib.parser.SwerveDriveConfiguration;
 import swervelib.parser.SwerveParser;
+import swervelib.telemetry.SwerveDriveTelemetry;
+import swervelib.telemetry.SwerveDriveTelemetry.TelemetryVerbosity;
 
-public class SwerveSubsystem extends SubsystemBase {
-  private final SwerveDrive swerveDrive;
+public class SwerveSubsystem extends SubsystemBase
+{
+
+  /**
+   * Swerve drive object.
+   */
+  private final SwerveDrive       swerveDrive;
   /**
    * The auto builder for PathPlanner, there can only ever be one created so we save it just incase we generate multiple
    * paths with events.
    */
-  private SwerveAutoBuilder autoBuilder = null;
+  private       SwerveAutoBuilder autoBuilder = null;
 
-  /** Creates a new Swerve. */
-  public SwerveSubsystem() {
-    try {
-      swerveDrive = new SwerveParser(new File(Filesystem.getDeployDirectory(), "swerve")).createSwerveDrive();
-    } catch (IOException ioException) {
-      System.out.println("Configure files not found for Swerve Drive!");
-      throw new RuntimeException();
+  /**
+   * Initialize {@link SwerveDrive} with the directory provided.
+   *
+   * @param directory Directory of swerve drive config files.
+   */
+  public SwerveSubsystem(File directory)
+  {
+    // Configure the Telemetry before creating the SwerveDrive to avoid unnecessary objects being created.
+    SwerveDriveTelemetry.verbosity = TelemetryVerbosity.HIGH;
+    try
+    {
+      swerveDrive = new SwerveParser(directory).createSwerveDrive();
+    } catch (Exception e)
+    {
+      throw new RuntimeException(e);
     }
+
+    /**
+     * Chad 10/25/2023 - this code broked it
+     */
+    //swerveDrive.setHeadingCorrection(false); // Heading correction should only be used while controlling the robot via angle.
+  }
+
+  /**
+   * Construct the swerve drive.
+   *
+   * @param driveCfg      SwerveDriveConfiguration for the swerve.
+   * @param controllerCfg Swerve Controller.
+   */
+  public SwerveSubsystem(SwerveDriveConfiguration driveCfg, SwerveControllerConfiguration controllerCfg)
+  {
+    swerveDrive = new SwerveDrive(driveCfg, controllerCfg);
+  }
+
+  /**
+   * The primary method for controlling the drivebase.  Takes a {@link Translation2d} and a rotation rate, and
+   * calculates and commands module states accordingly.  Can use either open-loop or closed-loop velocity control for
+   * the wheel velocities.  Also has field- and robot-relative modes, which affect how the translation vector is used.
+   *
+   * @param translation   {@link Translation2d} that is the commanded linear velocity of the robot, in meters per
+   *                      second. In robot-relative mode, positive x is torwards the bow (front) and positive y is
+   *                      torwards port (left).  In field-relative mode, positive x is away from the alliance wall
+   *                      (field North) and positive y is torwards the left wall when looking through the driver station
+   *                      glass (field West).
+   * @param rotation      Robot angular rate, in radians per second. CCW positive.  Unaffected by field/robot
+   *                      relativity.
+   * @param fieldRelative Drive mode.  True for field-relative, false for robot-relative.
+   */
+  public void drive(Translation2d translation, double rotation, boolean fieldRelative, boolean isOpenLoop)
+  {
+    swerveDrive.drive(translation,
+                      rotation,
+                      fieldRelative,
+                      isOpenLoop); // Open loop is disabled since it shouldn't be used most of the time.
+  }
+
+  /**
+   * Drive the robot given a chassis field oriented velocity.
+   *
+   * @param velocity Velocity according to the field.
+   */
+  public void driveFieldOriented(ChassisSpeeds velocity)
+  {
+    swerveDrive.driveFieldOriented(velocity);
+  }
+
+  /**
+   * Drive according to the chassis robot oriented velocity.
+   *
+   * @param velocity Robot oriented {@link ChassisSpeeds}
+   */
+  public void drive(ChassisSpeeds velocity)
+  {
+    swerveDrive.drive(velocity);
   }
 
   @Override
-  public void periodic() {
-    // This method will be called once per scheduler run
+  public void periodic()
+  {
   }
-  
+
+  @Override
+  public void simulationPeriodic()
+  {
+  }
+
   /**
    * Get the swerve drive kinematics object.
    *
@@ -221,6 +298,13 @@ public class SwerveSubsystem extends SubsystemBase {
     return swerveDrive.getPitch();
   }
 
+  /**
+   * Add a fake vision reading for testing purposes.
+   */
+  public void addFakeVisionReading()
+  {
+    swerveDrive.addVisionMeasurement(new Pose2d(3, 3, Rotation2d.fromDegrees(65)), Timer.getFPGATimestamp(), true, 4);
+  }
 
   /**
    * Factory to fetch the PathPlanner command to follow the defined path.
